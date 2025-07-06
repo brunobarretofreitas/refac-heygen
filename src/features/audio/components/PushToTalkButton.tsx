@@ -115,11 +115,19 @@ const PushToTalkButton: React.FC<PushToTalkButtonProps> = ({
   return (
     <Button
       type="primary"
-      shape="circle"
-      icon={isRecording ? <MicOff /> : <Mic />}
+      icon={isRecording ? <MicOff size={16} /> : <Mic size={16} />}
       onClick={handleClick}
       loading={isLoading}
-    />
+      style={{
+        display: "flex",
+        width: "fit-content",
+        alignItems: "center",
+        backgroundColor: isRecording ? "#f5222d" : "#29ad5b",
+        color: "#fff",
+      }}
+    >
+      {isRecording ? "Parar Gravação" : "Pressionar para Falar"}
+    </Button>
   );
 };
 

@@ -1,17 +1,22 @@
 "use client";
 
 import Welcome from "@/components/Welcome";
-import PushToTalkButton from "@/features/audio/components/PushToTalkButton";
+import AvatarInputBar from "@/features/avatar/components/AvatarInputBar";
 import { AvatarState } from "@/features/avatar/enums";
 import AvatarPage from "@/features/avatar/pages/AvatarPage";
 import { AvatarProvider, useAvatar } from "@/providers/AvatarProvider";
 
-const HomeComponent = () => {
+const MainComponent = () => {
   const { avatarState } = useAvatar();
 
-  return avatarState === AvatarState.IDLE ? <Welcome /> : <AvatarPage />;
+  // return avatarState === AvatarState.IDLE ? <Welcome /> : <AvatarPage />;
+  return <AvatarPage />;
 };
 
 export default function Home() {
-  return <PushToTalkButton onTranscription={(text) => alert(text)} />;
+  return (
+    <AvatarProvider>
+      <MainComponent />
+    </AvatarProvider>
+  );
 }

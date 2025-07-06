@@ -3,7 +3,7 @@ import StreamingAvatar, {
   StreamingEvents,
   TaskType,
 } from "@heygen/streaming-avatar";
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 
 import { FetchHeygenTokenApiResponse } from "@/app/api/heygen/token/route";
 import { AvatarState } from "@/features/avatar/enums";
@@ -26,6 +26,9 @@ type AvatarContextType = {
   avatar: StreamingAvatar | null;
   avatarState: AvatarState;
   setAvatarState: (state: AvatarState) => void;
+  deviceType: "desktop" | "mobile";
+  lastMessage: string;
+  setLastMessage: (message: string) => void;
 
   actions: {
     initializeAvatar: () => Promise<void>;
@@ -37,6 +40,9 @@ type AvatarContextType = {
 const initialAvatarContext: AvatarContextType = {
   avatar: null,
   avatarState: AvatarState.IDLE,
+  deviceType: "desktop",
+  lastMessage: "",
+  setLastMessage: () => {},
   setAvatarState: () => {},
   actions: {
     initializeAvatar: async () => {},
@@ -53,6 +59,21 @@ export const AvatarProvider: React.FC<{ children: React.ReactNode }> = ({
 }) => {
   const [avatar, setAvatar] = useState<StreamingAvatar | null>(null);
   const [avatarState, setAvatarState] = useState<AvatarState>(AvatarState.IDLE);
+  const [deviceType, setDeviceType] = useState<"desktop" | "mobile">("desktop");
+  const [lastMessage, setLastMessage] = useState<string>("");
+
+  useEffect(() => {
+    const fetchDevideType = async () => {
+      const response = await fetch("/api/deviceType");
+      if (!response.ok) {
+        return;
+      }
+      const data = await response.json();
+      setDeviceType(data.deviceType);
+    };
+
+    fetchDevideType();
+  }, []);
 
   const initializeAvatar = async () => {
     if (
@@ -135,6 +156,9 @@ export const AvatarProvider: React.FC<{ children: React.ReactNode }> = ({
         avatar,
         avatarState,
         setAvatarState,
+        deviceType,
+        lastMessage,
+        setLastMessage,
         actions: {
           initializeAvatar,
           speak,

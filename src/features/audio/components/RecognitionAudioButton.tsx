@@ -1,125 +1,145 @@
 import { Button } from "antd";
 import { Mic, MicOff } from "lucide-react";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 
 interface RecognitionAudioButtonProps {
   /** Desabilita a escuta quando true */
   disabled?: boolean;
+  waitingForAvatarResult?: boolean;
   /** Callback disparado ao fim da fala (2s de silêncio) */
   onResult: (text: string) => void;
 }
 
 const RecognitionAudioButton: React.FC<RecognitionAudioButtonProps> = ({
   disabled = false,
+  waitingForAvatarResult,
   onResult,
 }) => {
   const [isDisabled, setIsDisabled] = useState(disabled);
   const [listening, setListening] = useState(false);
-  const [transcript, setTranscript] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const recognitionRef = useRef<any | null>(null);
   const silenceTimeoutRef = useRef<number | null>(null);
-  const disabledRef = useRef(isDisabled);
+
+  // Guarda se a parada foi manual (botão) ou automática (onend)
+  const manualStopRef = useRef(false);
+  // Previne chamadas duplicadas de start()
+  const isStartingRef = useRef(false);
 
   // Sincroniza prop disabled com estado interno
   useEffect(() => {
     setIsDisabled(disabled);
   }, [disabled]);
 
-  // Atualiza ref disabled
-  useEffect(() => {
-    disabledRef.current = isDisabled;
-    const recognition = recognitionRef.current;
-    if (!recognition) return;
-
-    if (isDisabled) {
-      recognition.stop();
-    } else {
-      recognition.start();
+  const startRecognition = useCallback(() => {
+    const rec = recognitionRef.current;
+    if (!rec || listening || isStartingRef.current || isDisabled) return;
+    manualStopRef.current = false;
+    try {
+      isStartingRef.current = true;
+      rec.start();
+    } catch (err) {
+      isStartingRef.current = false;
     }
-  }, [isDisabled]);
+  }, [listening, isDisabled]);
 
-  // Inicializa SpeechRecognition
+  const stopRecognition = useCallback(() => {
+    const rec = recognitionRef.current;
+    if (!rec || !listening) return;
+    manualStopRef.current = true;
+    rec.stop();
+  }, [listening]);
+
+  // Inicializa SpeechRecognition ao montar
   useEffect(() => {
-    const SpeechRecognition =
+    const SR =
       (window as any).SpeechRecognition ||
       (window as any).webkitSpeechRecognition;
-
-    if (!SpeechRecognition) {
+    if (!SR) {
       setError("Reconhecimento de fala não suportado neste navegador.");
       return;
     }
 
-    const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = "pt-BR";
+    const rec = new SR();
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.lang = "pt-BR";
 
-    recognition.onstart = () => {
+    rec.onstart = () => {
       setListening(true);
       setError(null);
+      isStartingRef.current = false;
     };
 
-    recognition.onend = () => {
+    rec.onend = () => {
       setListening(false);
-      if (!disabledRef.current) recognition.start();
+      isStartingRef.current = false;
+      // Só reinicia se não veio de um stop manual e não estiver disabled
+      if (!manualStopRef.current && !isDisabled) {
+        setTimeout(startRecognition, 100);
+      }
     };
 
-    recognition.onerror = (event: any) => {
-      console.error("SpeechRecognition error", event.error);
-      if (
-        event.error === "not-allowed" ||
-        event.error === "permission-denied"
-      ) {
+    rec.onerror = (evt: any) => {
+      isStartingRef.current = false;
+      if (evt.error === "not-allowed" || evt.error === "permission-denied") {
         setError("Permissão de microfone negada.");
       } else {
-        setError(`Erro no reconhecimento de fala: ${event.error}`);
+        setError(`Erro no reconhecimento de fala: ${evt.error}`);
       }
     };
 
-    recognition.onresult = (event: any) => {
+    rec.onresult = (evt: any) => {
       let interim = "";
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        interim += event.results[i][0].transcript;
+      for (let i = evt.resultIndex; i < evt.results.length; i++) {
+        interim += evt.results[i][0].transcript;
       }
-      setTranscript(interim);
-
-      if (silenceTimeoutRef.current) clearTimeout(silenceTimeoutRef.current);
-
+      if (silenceTimeoutRef.current) {
+        clearTimeout(silenceTimeoutRef.current);
+      }
       silenceTimeoutRef.current = window.setTimeout(() => {
         const text = interim.trim();
         if (text) onResult(text);
-        setTranscript("");
+        setListening(false);
       }, 2000);
     };
 
-    recognitionRef.current = recognition;
-    if (!isDisabled) recognition.start();
+    recognitionRef.current = rec;
+    // auto-start se não estiver disabled
+    if (!isDisabled) startRecognition();
 
     return () => {
-      recognition.stop();
+      rec.stop();
       if (silenceTimeoutRef.current) clearTimeout(silenceTimeoutRef.current);
     };
-  }, []);
+  }, [isDisabled, onResult, startRecognition]);
+
+  // Ao clicar: alterna start/stop manualmente
+  const handleClick = () => {
+    if (listening) {
+      stopRecognition();
+    } else {
+      startRecognition();
+    }
+    setIsDisabled((prev) => !prev);
+  };
 
   return (
     <div className="flex items-center space-x-2">
-      <Button onClick={() => setIsDisabled((prev) => !prev)}>
+      <Button onClick={handleClick} disabled={!!error}>
         {listening && !isDisabled ? (
           <Mic className="text-green-500" />
         ) : (
           <MicOff className="text-gray-500" />
         )}
+        {listening
+          ? "Ouvindo"
+          : waitingForAvatarResult
+            ? "Aguardando resposta do avatar"
+            : "Pressionar para falar"}
       </Button>
-
-      <div className="flex-1">
-        {error ? (
-          <span className="text-red-600 text-sm">{error}</span>
-        ) : (
-          <span className="text-gray-800">{transcript || "..."}</span>
-        )}
-      </div>
+      {error && <span className="text-red-500">{error}</span>}
     </div>
   );
 };
